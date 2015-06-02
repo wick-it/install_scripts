@@ -35,15 +35,16 @@ signal.signal(signal.SIGINT, signal_handler)
 ## DEFINE CONSTANTS
 ######################
 
-MENU        = "menu"
-COMMAND     = "command"
-EXITMENU    = "exitmenu"
-FORMAT_HIGHLIGHT  = curses.color_pair(1)
-FORMAT_DIM        = curses.color_pair(2)
-FORMAT_SELECTED   = curses.color_pair(3)
-FORMAT_NORMAL     = curses.A_NORMAL
-MENU_START_X      = 5
-MENU_START_Y      = 10
+MENU                    = "menu"
+COMMAND                 = "command"
+EXITMENU                = "exitmenu"
+FORMAT_HIGHLIGHT        = curses.color_pair(1)
+FORMAT_DIM              = curses.color_pair(2)
+FORMAT_SELECTED         = curses.color_pair(3)
+FORMAT_NORMAL           = curses.A_NORMAL
+MENU_START_X            = 5
+MENU_START_Y            = 10
+MENU_MAX_Y, MENU_MAX_X  = myscreen.getmaxyx()
 
 PIP = "pip"
 APT_GET = "apt-get"
