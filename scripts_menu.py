@@ -6,6 +6,7 @@ import sys
 import curses
 import subprocess
 import re
+import os.path
 
 
 # TODO: pip list --outdated
@@ -46,8 +47,14 @@ MENU_START_Y      = 10
 
 PIP = "pip"
 APT_GET = "apt-get"
+DOTFILE = "dotfile"
 
 menu_items = [
+    {'name' :  '.bash_profile'              , 'type' : DOTFILE },
+    {'name' :  '.tmux.conf'                 , 'type' : DOTFILE },
+    {'name' :  '.bashrc'                    , 'type' : DOTFILE },
+    {'name' :  '.vimrc'                     , 'type' : DOTFILE },
+    {'name' :  '.alias'                     , 'type' : DOTFILE },
     {'name' :  'git'                        , 'type' : APT_GET },
     {'name' :  'htop'                       , 'type' : APT_GET },
     {'name' :  'ack-grep'                   , 'type' : APT_GET },
@@ -69,13 +76,15 @@ menu_items = [
     {'name' :  'python-crontab'             , 'type' : PIP     },
 ]
 
+end_program = False
 
 # libjpeg62 libjpeg62-dev zlib1g-dev libfreetype6 libfreetype6-dev
 
 MENU_OPTIONS        = len(menu_items)
-ADDITIONAL_OPTIONS  = 2
+ADDITIONAL_OPTIONS  = 3
 SELECT_POSITION     = MENU_OPTIONS
 DESELECT_POSITION   = MENU_OPTIONS + 1
+INSTALL_POSITION    = MENU_OPTIONS + 2
 
 
 ######################
@@ -90,6 +99,9 @@ def get_installed_status(package):
         elif package['type'] == PIP:
             out = subprocess.check_output(['pip','show',package['name']])
             return len(out) > 0
+        if package['type'] == DOTFILE:
+            home = os.path.expanduser('~') + '/'
+            return os.path.isfile(home + package['name'])
 
     except:
         return False
@@ -97,8 +109,27 @@ def get_installed_status(package):
 def initialise_menu(menu_items):
     for item in menu_items:
         item['installed'] = get_installed_status(item)
+        if item['installed']:
+            item['name'] = item['name'] + ' (installed)'
         item['selected']  = False
 
+def get_initial_position():
+    position = 0
+    for item in menu_items:
+        if item['installed'] == False:
+            return position
+        position += 1
+    return SELECT_POSITION
+
+def install_selected_items():
+    for item in menu_items:
+        if item['selected']:
+            if item['type'] == DOTFILE:
+                home = os.path.expanduser('~') + '/'
+                subprocess.call(['ln','-sf',home + '.dotfiles/dotfiles/' + item['name'],home + item['name']])
+    curses.endwin()
+    print "Installed " + item['name']
+    sys.exit(0)
 
 
 def handle_select_event(position):
@@ -113,6 +144,8 @@ def handle_select_event(position):
     elif position == DESELECT_POSITION:
         for item in menu_items:
             item['selected'] = False
+    elif position == INSTALL_POSITION:
+        install_selected_items()
 
 
 
@@ -137,12 +170,16 @@ def draw_menu(position):
         counter += 1
     select_format   = FORMAT_NORMAL
     deselect_format = FORMAT_NORMAL
-    if position == MENU_OPTIONS:
-        select_format = FORMAT_HIGHLIGHT
-    if position == MENU_OPTIONS + 1:
+    install_format  = FORMAT_NORMAL
+    if position == SELECT_POSITION:
+        select_format   = FORMAT_HIGHLIGHT
+    if position == DESELECT_POSITION:
         deselect_format = FORMAT_HIGHLIGHT
-    myscreen.addstr(MENU_START_X + counter + 2,MENU_START_Y + 3, "Select all",select_format)
-    myscreen.addstr(MENU_START_X + counter + 2,MENU_START_Y + 18, "Deselect all",deselect_format)
+    if position == INSTALL_POSITION:
+        install_format  = FORMAT_HIGHLIGHT
+    myscreen.addstr(MENU_START_X + counter + 2 , MENU_START_Y + 3  , "Select all"             ,select_format  )
+    myscreen.addstr(MENU_START_X + counter + 2 , MENU_START_Y + 18 , "Deselect all"           ,deselect_format)
+    myscreen.addstr(MENU_START_X + counter + 2 , MENU_START_Y + 35 , "Install selected items" ,install_format )
 
     myscreen.addstr(0,0,"")
     myscreen.refresh()
@@ -181,9 +218,10 @@ def is_allowed_position(position):
 
 def execute():
     initialise_menu(menu_items)
-    draw_menu(0)
-    position = 0
-    while(True):
+    position = get_initial_position()
+    draw_menu(position)
+
+    while(end_program == False):
         input_character = myscreen.getch()
         if input_character == 106: # k
             position = get_new_position(position,position,'up')

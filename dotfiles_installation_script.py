@@ -7,7 +7,7 @@ subprocess.call(['clear'])
 
 #tmux ssh
 print "Make sure tmux does link to old ssh agent"
-subprocess.call(['sudo','cp','tmux','/usr/local/bin'])
+subprocess.call(['sudo','cp','/home/dlos/.dotfiles/dotfiles/tmux','/usr/local/bin'])
 
 #make symbolic links to everywhere
 print "Starting to make symbolic links"
@@ -21,3 +21,4 @@ print "bash_profile,",
 subprocess.call(['ln','-sf','/home/dlos/.dotfiles/dotfiles/.bash_profile','/home/dlos/.bash_profile'])
 
 print "completed!"
+
