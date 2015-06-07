@@ -78,10 +78,12 @@ class Installation_menu:
         curses.init_pair(1,curses.COLOR_BLACK, curses.COLOR_WHITE)
         curses.init_pair(2, 5, -1)
         curses.init_pair(3,curses.COLOR_BLACK, curses.COLOR_GREEN)
+        curses.init_pair(4, 2, -1)
 
         self.constants['format_highlight']   = curses.color_pair(1)
         self.constants['format_dim']         = curses.color_pair(2)
         self.constants['format_selected']    = curses.color_pair(3)
+        self.constants['format_upgrade']     = curses.color_pair(4)
 
         self.constants['menu_options']       = len(self.menu_items)
         self.constants['select_position']    = self.constants['menu_options']
@@ -153,9 +155,11 @@ class Installation_menu:
         for item in self.menu_items:
             if item['installed']:
                 if item['name'] in upgradeble_packages.keys():
-                    item['name'] = item['name'] + ' (upgradeable)'
+                    item['name'] = item['name']
+                    item['upgradeable'] = True
                 else:
-                    item['name'] = item['name'] + ' (installed)'
+                    item['upgradeable'] = False
+                    item['name'] = item['name']
 
             #if item['installed']: Maybe find something else here
 
@@ -163,7 +167,7 @@ class Installation_menu:
     def get_initial_position(self):
         position = 0
         for item in self.menu_items:
-            if item['installed'] == False:
+            if item['installed'] == False or item['upgradeable'] == True:
                 return position
             position += 1
         return self.constants['select_position']
@@ -207,18 +211,24 @@ class Installation_menu:
         counter = 0
         for menu_item in self.menu_items:
             item_format = None
+            item_append = ""
             if self.position == counter:
                 item_format = self.constants['format_highlight']
-            elif menu_item['installed']:
-                item_format = self.constants['format_dim']
             elif menu_item['selected']:
                 item_format = self.constants['format_selected']
+            elif menu_item['installed']:
+                if menu_item['upgradeable']:
+                    item_format = self.constants['format_upgrade']
+                    item_append = " (upgradeable)"
+                else:
+                    item_format = self.constants['format_dim']
+                    item_append = " (installed)"
             else:
                 item_format = self.constants['format_normal']
             self.myscreen.addstr(
                 self.constants['menu_start_y'] + counter
                 , self.constants['menu_start_x']
-                , menu_item['name']
+                , menu_item['name'] + item_append
                 , item_format
             )
             counter += 1
@@ -259,7 +269,10 @@ class Installation_menu:
 
     def is_allowed_position(self,position):
         if position < self.constants['menu_options']:
-            return not self.menu_items[position]['installed']
+            if self.menu_items[position]['installed']:
+                return self.menu_items[position]['upgradeable']
+            else:
+                return True
         elif position < self.constants['menu_options'] + self.constants['additional_options']:
             return True
         else:
