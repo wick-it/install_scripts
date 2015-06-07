@@ -11,228 +11,309 @@ import os.path
 
 # TODO: pip list --outdated
 # TODO: make the highlight start on the first intalled item
+# TODO: first item can sometimes not be highlighted
+# TODO: check screensize and change script accordingly
+# TODO: upgrade: apt-get --just-print upgrade 2>&1 | perl -ne 'if (/Inst\s([\w,\-,\d,\.,~,:,\+]+)\s\[([\w,\-,\d,\.,~,:,\+]+)\]\s\(([\w,\-,\d,\.,~,:,\+]+)\)? /i) {print "PROGRAM: $1 INSTALLED: $2 AVAILABLE: $3\n"}'
 
+PIP     = "pip"
+APT_GET = "apt-get"
+DOTFILE = "dotfile"
+CUSTOM  = "custom"
+
+
+
+class Installation_menu:
 
 ######################
 ## INITIALISE PROGRAM
 ######################
 
-myscreen = curses.initscr()
-curses.start_color() # Lets you use colors when highlighting selected menu option
-curses.use_default_colors()
-curses.init_pair(1,curses.COLOR_BLACK, curses.COLOR_WHITE)
-curses.init_pair(2, 5, -1)
-curses.init_pair(3,curses.COLOR_BLACK, curses.COLOR_GREEN)
+    myscreen = None
+    position = 0
 
 
-def signal_handler(signal, frame):
-    curses.endwin()
-    sys.exit(130)
-signal.signal(signal.SIGINT, signal_handler)
+    def signal_handler(self, signal, frame):
+        curses.endwin()
+        sys.exit(130)
 
 
 ######################
 ## DEFINE CONSTANTS
 ######################
+    end_program = False
+    verbose     = False
+    constants   = {}
 
-MENU                    = "menu"
-COMMAND                 = "command"
-EXITMENU                = "exitmenu"
-FORMAT_HIGHLIGHT        = curses.color_pair(1)
-FORMAT_DIM              = curses.color_pair(2)
-FORMAT_SELECTED         = curses.color_pair(3)
-FORMAT_NORMAL           = curses.A_NORMAL
-MENU_START_X            = 5
-MENU_START_Y            = 10
-MENU_MAX_Y, MENU_MAX_X  = myscreen.getmaxyx()
+    constants['pip']                = PIP
+    constants['apt_get']            = APT_GET
+    constants['dotfile']            = DOTFILE
+    constants['custom']             = CUSTOM
+    constants['menu']               = "menu"
+    constants['command']            = "command"
+    constants['exitmenu']           = "exitmenu"
+    constants['format_normal']      = curses.A_NORMAL
+    constants['menu_start_x']       = 10
+    constants['menu_start_y']       = 5
+    constants['additional_options'] = 3
 
-PIP = "pip"
-APT_GET = "apt-get"
-DOTFILE = "dotfile"
+    end_program = False
 
-menu_items = [
-    {'name' :  '.bash_profile'              , 'type' : DOTFILE },
-    {'name' :  '.tmux.conf'                 , 'type' : DOTFILE },
-    {'name' :  '.bashrc'                    , 'type' : DOTFILE },
-    {'name' :  '.vimrc'                     , 'type' : DOTFILE },
-    {'name' :  '.alias'                     , 'type' : DOTFILE },
-    {'name' :  'git'                        , 'type' : APT_GET },
-    {'name' :  'htop'                       , 'type' : APT_GET },
-    {'name' :  'ack-grep'                   , 'type' : APT_GET },
-    {'name' :  'fail2ban'                   , 'type' : APT_GET },
-    {'name' :  'python-pip'                 , 'type' : APT_GET },
-    {'name' :  'python-dev'                 , 'type' : APT_GET },
-    {'name' :  'build-essential'            , 'type' : APT_GET },
-    {'name' :  'python-mysqldb'             , 'type' : APT_GET },
-    {'name' :  'mysql-server'               , 'type' : APT_GET },
-    {'name' :  'apache2'                    , 'type' : APT_GET },
-    {'name' :  'libapache2-mod-wsgi'        , 'type' : APT_GET },
-    {'name' :  'unattended-upgrades'        , 'type' : APT_GET },
-    {'name' :  'texlive-latex-base'         , 'type' : APT_GET },
-    {'name' :  'texlive-latex-extra'        , 'type' : APT_GET },
-    {'name' :  'libapache2-mod-xsendfile'   , 'type' : APT_GET },
-    {'name' :  'qrcode'                     , 'type' : PIP     },
-    {'name' :  'paramiko'                   , 'type' : PIP     },
-    {'name' :  'pillow'                     , 'type' : PIP     },
-    {'name' :  'python-crontab'             , 'type' : PIP     },
-]
 
-end_program = False
-
-# libjpeg62 libjpeg62-dev zlib1g-dev libfreetype6 libfreetype6-dev
-
-MENU_OPTIONS        = len(menu_items)
-ADDITIONAL_OPTIONS  = 3
-SELECT_POSITION     = MENU_OPTIONS
-DESELECT_POSITION   = MENU_OPTIONS + 1
-INSTALL_POSITION    = MENU_OPTIONS + 2
+    def determine_longest_name(self):
+        longest = 0
+        for item in self.menu_items:
+            if len(item['name']) > longest:
+                longest = len(item['name'])
+        return longest
 
 
 ######################
 ## Define functions
 ######################
-def get_installed_status(package):
-    try:
-        if package['type'] == APT_GET:
-            out = subprocess.check_output(['dpkg-query','-W',"-f=${Status} ${Version}",package['name']],stderr=subprocess.PIPE)
-            result = re.search("installed",out)
-            return result is not None
-        elif package['type'] == PIP:
-            out = subprocess.check_output(['pip','show',package['name']])
-            return len(out) > 0
-        if package['type'] == DOTFILE:
-            home = os.path.expanduser('~') + '/'
-            return os.path.isfile(home + package['name'])
 
-    except:
-        return False
+    def initialise_constants(self):
 
-def initialise_menu(menu_items):
-    for item in menu_items:
-        item['installed'] = get_installed_status(item)
-        if item['installed']:
-            item['name'] = item['name'] + ' (installed)'
-        item['selected']  = False
+        curses.start_color() # Lets you use colors when highlighting selected menu option
+        curses.use_default_colors()
+        curses.init_pair(1,curses.COLOR_BLACK, curses.COLOR_WHITE)
+        curses.init_pair(2, 5, -1)
+        curses.init_pair(3,curses.COLOR_BLACK, curses.COLOR_GREEN)
 
-def get_initial_position():
-    position = 0
-    for item in menu_items:
-        if item['installed'] == False:
-            return position
-        position += 1
-    return SELECT_POSITION
+        self.constants['format_highlight']   = curses.color_pair(1)
+        self.constants['format_dim']         = curses.color_pair(2)
+        self.constants['format_selected']    = curses.color_pair(3)
 
-def install_selected_items():
-    for item in menu_items:
-        if item['selected']:
-            if item['type'] == DOTFILE:
+        self.constants['menu_options']       = len(self.menu_items)
+        self.constants['select_position']    = self.constants['menu_options']
+        self.constants['deselect_position']  = self.constants['menu_options'] + 1
+        self.constants['install_position']   = self.constants['menu_options'] + 2
+
+        self.constants['menu_max_y'], self.constants['menu_max_x'] = self.myscreen.getmaxyx()
+
+        self.constants['minimum_required_x'] = self.constants['menu_start_x'] + self.determine_longest_name()
+        self.constants['minimum_required_y'] = self.constants['menu_start_y'] + self.constants['menu_options']
+
+    def validate_screen_size_or_quit(self):
+        if self.constants['menu_max_y'] < self.constants['minimum_required_y']:
+            curses.endwin()
+            print "Program gracefully closed after seeing window is too small"
+            sys.exit(0)
+        elif self.constants['menu_max_x'] < self.constants['minimum_required_x']:
+            curses.endwin()
+            print "Program gracefully closed after seeing window is too small"
+            sys.exit(0)
+
+
+    def get_installed_status(self,package):
+        try:
+            if package['type'] == self.constants['apt_get']:
+                out = subprocess.check_output(['dpkg-query','-W',"-f=${Status} ${Version}",package['name']],stderr=subprocess.PIPE)
+                result = re.search("installed",out)
+                return result is not None
+            elif package['type'] == self.constants['pip']:
+                out = subprocess.check_output(['pip','show',package['name']])
+                return len(out) > 0
+            elif package['type'] == self.constants['dotfile']:
                 home = os.path.expanduser('~') + '/'
-                subprocess.call(['ln','-sf',home + '.dotfiles/dotfiles/' + item['name'],home + item['name']])
-    curses.endwin()
-    print "Installed " + item['name']
-    sys.exit(0)
+                return os.path.isfile(home + package['name'])
+            if package['type'] == self.constants['custom']:
+                return package['check_install_def']()
+
+        except:
+            return False
+
+    def set_all_installed_statuses(self):
+        for item in self.menu_items:
+            item['installed'] = self.get_installed_status(item)
+            #if item['installed']: Maybe find something else here
+            #    item['name'] = item['name'] + ' (installed)'
+            item['selected']  = False
 
 
-def handle_select_event(position):
-    if position > 0 and position < MENU_OPTIONS:
-        if menu_items[position]['selected']:
-            menu_items[position]['selected'] = False
-        else:
-            menu_items[position]['selected'] = True
-    elif position == SELECT_POSITION:
-        for item in menu_items:
-            item['selected'] = True
-    elif position == DESELECT_POSITION:
-        for item in menu_items:
-            item['selected'] = False
-    elif position == INSTALL_POSITION:
-        install_selected_items()
+    def get_hash_of_all_upgradeble_packages(self):
+
+        all_upgradeble_packages = {}
+        out = subprocess.check_output(['apt-get','--just-print','upgrade'])
+        lines = out.split('\n')
+        for line in lines:
+            matches = re.search(
+                'Inst\s([\w,\-,\d,\.,~,:,\+]+)\s\[([\w,\-,\d,\.,~,:,\+]+)\]\s\(([\w,\-,\d,\.,~,:,\+]+)\)?',
+                line,
+                re.IGNORECASE
+            )
+            if matches is not None and len(matches.groups()) == 3:
+                all_upgradeble_packages[matches.group(1)] = {
+                    'current'   :   matches.group(2),
+                    'new'       :   matches.group(3)
+                }
+        return all_upgradeble_packages
+
+    def get_all_upgraded_statuses(self):
+        upgradeble_packages = self.get_hash_of_all_upgradeble_packages()
+        for item in self.menu_items:
+            if item['installed']:
+                if item['name'] in upgradeble_packages.keys():
+                    item['name'] = item['name'] + ' (upgradeable)'
+                else:
+                    item['name'] = item['name'] + ' (installed)'
+
+            #if item['installed']: Maybe find something else here
 
 
+    def get_initial_position(self):
+        position = 0
+        for item in self.menu_items:
+            if item['installed'] == False:
+                return position
+            position += 1
+        return self.constants['select_position']
 
-def draw_menu(position):
-    counter = 0
-    for menu_item in menu_items:
-        item_format = None
-        if position == counter:
-            item_format = FORMAT_HIGHLIGHT
-        elif menu_item['installed']:
-            item_format = FORMAT_DIM
-        elif menu_item['selected']:
-            item_format = FORMAT_SELECTED
-        else:
-            item_format = FORMAT_NORMAL
-        myscreen.addstr(
-            MENU_START_X + counter
-            , MENU_START_Y
-            , menu_item['name']
-            , item_format
-        )
-        counter += 1
-    select_format   = FORMAT_NORMAL
-    deselect_format = FORMAT_NORMAL
-    install_format  = FORMAT_NORMAL
-    if position == SELECT_POSITION:
-        select_format   = FORMAT_HIGHLIGHT
-    if position == DESELECT_POSITION:
-        deselect_format = FORMAT_HIGHLIGHT
-    if position == INSTALL_POSITION:
-        install_format  = FORMAT_HIGHLIGHT
-    myscreen.addstr(MENU_START_X + counter + 2 , MENU_START_Y + 3  , "Select all"             ,select_format  )
-    myscreen.addstr(MENU_START_X + counter + 2 , MENU_START_Y + 18 , "Deselect all"           ,deselect_format)
-    myscreen.addstr(MENU_START_X + counter + 2 , MENU_START_Y + 35 , "Install selected items" ,install_format )
+    def install_selected_items(self):
+        curses.endwin()
+        for item in self.menu_items:
+            if item['selected']:
+                if item['type'] == DOTFILE:
+                    home = os.path.expanduser('~') + '/'
+                    subprocess.call(['ln','-sf',home + '.dotfiles/dotfiles/' + item['name'],home + item['name']])
+                elif item['type'] == CUSTOM:
+                    item['install_def']()
+                elif item['type'] == APT_GET:
+                    subprocess.call(['sudo','apt-get','install',item['name']])
+                elif item['type'] == PIP:
+                    subprocess.call(['sudo','pip','install',item['name']])
+                print "Installed " + item['name']
 
-    myscreen.addstr(0,0,"")
-    myscreen.refresh()
+        sys.exit(0)
 
 
-def get_new_position(new_position,old_position,direction):
-        if direction == 'down' and new_position == 0:
-           return old_position
-        elif direction == 'up' and new_position == MENU_OPTIONS - 1 + ADDITIONAL_OPTIONS:
-            return old_position
-        elif direction == 'up' and new_position < MENU_OPTIONS - 1 + ADDITIONAL_OPTIONS:
-            if is_allowed_position(new_position+1):
-                new_position += 1
+    def handle_select_event(self):
+        if self.position >= 0 and self.position < self.constants['menu_options']:
+            if self.menu_items[self.position]['selected']:
+                self.menu_items[self.position]['selected'] = False
             else:
-                new_position = get_new_position(new_position+1,old_position,direction)
-        elif direction == 'down' and new_position > 0:
-            if is_allowed_position(new_position-1):
-                new_position -= 1
+                self.menu_items[self.position]['selected'] = True
+        elif self.position == self.constants['select_position']:
+            for item in self.menu_items:
+                item['selected'] = True
+        elif self.position == self.constants['deselect_position']:
+            for item in self.menu_items:
+                item['selected'] = False
+        elif self.position == self.constants['install_position']:
+            self.install_selected_items()
+
+
+
+    def draw_menu(self):
+        counter = 0
+        for menu_item in self.menu_items:
+            item_format = None
+            if self.position == counter:
+                item_format = self.constants['format_highlight']
+            elif menu_item['installed']:
+                item_format = self.constants['format_dim']
+            elif menu_item['selected']:
+                item_format = self.constants['format_selected']
             else:
-                new_position = get_new_position(new_position-1,old_position,direction)
-        return new_position
+                item_format = self.constants['format_normal']
+            self.myscreen.addstr(
+                self.constants['menu_start_y'] + counter
+                , self.constants['menu_start_x']
+                , menu_item['name']
+                , item_format
+            )
+            counter += 1
+        select_format   = self.constants['format_normal']
+        deselect_format = self.constants['format_normal']
+        install_format  = self.constants['format_normal']
+        if self.position == self.constants['select_position']:
+            select_format   = self.constants['format_highlight']
+        if self.position == self.constants['deselect_position']:
+            deselect_format = self.constants['format_highlight']
+        if self.position == self.constants['install_position']:
+            install_format  = self.constants['format_highlight']
+        self.myscreen.addstr(self.constants['menu_start_y'] + counter + 2 , self.constants['menu_start_x'] + 3  , "Select all"             ,select_format  )
+        self.myscreen.addstr(self.constants['menu_start_y'] + counter + 2 , self.constants['menu_start_x'] + 18 , "Deselect all"           ,deselect_format)
+        self.myscreen.addstr(self.constants['menu_start_y'] + counter + 2 , self.constants['menu_start_x'] + 35 , "Install selected items" ,install_format )
+
+        self.myscreen.addstr(0,0,"")
+        self.myscreen.refresh()
 
 
-def is_allowed_position(position):
-    if position < MENU_OPTIONS:
-        return not menu_items[position]['installed']
-    elif position < MENU_OPTIONS + ADDITIONAL_OPTIONS :
-        return True
-    else:
-        return False
+    def get_new_position(self,new_position,old_position,direction):
+            if direction == 'down' and new_position == 0:
+               return old_position
+            elif direction == 'up' and new_position == self.constants['menu_options'] - 1 + self.constants['additional_options']:
+                return old_position
+            elif direction == 'up' and new_position < self.constants['menu_options'] - 1 + self.constants['additional_options']:
+                if self.is_allowed_position(new_position+1):
+                    new_position += 1
+                else:
+                    new_position = self.get_new_position(new_position+1,old_position,direction)
+            elif direction == 'down' and new_position > 0:
+                if self.is_allowed_position(new_position-1):
+                    new_position -= 1
+                else:
+                    new_position = self.get_new_position(new_position-1,old_position,direction)
+            return new_position
+
+
+    def is_allowed_position(self,position):
+        if position < self.constants['menu_options']:
+            return not self.menu_items[position]['installed']
+        elif position < self.constants['menu_options'] + self.constants['additional_options']:
+            return True
+        else:
+            return False
 
 ######################
 ## EXECUTE PROGRAM
 ######################
 
+    def set_instant_io_flush(self):
+        sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0) # set io flush to instant, because else the print messages will not be displayed
 
-def execute():
-    initialise_menu(menu_items)
-    position = get_initial_position()
-    draw_menu(position)
+    def catch_ctrlc_command_and_quit_nicely(self):
+        signal.signal(signal.SIGINT, self.signal_handler)
 
-    while(end_program == False):
-        input_character = myscreen.getch()
-        if input_character == 106: # k
-            position = get_new_position(position,position,'up')
-        elif input_character == 107: # j
-            position = get_new_position(position,position,'down')
-        elif input_character == 32: # spacebar
-            handle_select_event(position)
+    def start_listening_to_key_commands(self):
+        self.position = self.get_initial_position()
+        self.draw_menu()
 
-        draw_menu(position)
+        while(self.end_program == False):
+            input_character = self.myscreen.getch()
+            if input_character == 106: # k
+                self.position = self.get_new_position(self.position,self.position,'up')
+            elif input_character == 107: # j
+                self.position = self.get_new_position(self.position,self.position,'down')
+            elif input_character == 32: # spacebar
+                self.handle_select_event()
 
-execute()
-curses.endwin()
+            self.draw_menu()
+
+
+    def run_program(self,screen):
+        self.myscreen = screen
+        self.initialise_constants()
+        self.validate_screen_size_or_quit()
+        self.catch_ctrlc_command_and_quit_nicely()
+        self.start_listening_to_key_commands()
+
+
+    def __init__(self, menu_items, verbose=False):
+        self.set_instant_io_flush()
+        self.menu_items = menu_items
+        self.verbose = verbose
+        if verbose:
+            sys.stdout.write("Retrieving installed status...")
+        self.set_all_installed_statuses()
+        if verbose:
+            sys.stdout.write("  Done!\n")
+
+        if verbose:
+            sys.stdout.write("Retrieving upgraded status...")
+        self.get_all_upgraded_statuses()
+        if verbose:
+            sys.stdout.write("  Done!\n")
+
+        curses.wrapper(self.run_program)
 
